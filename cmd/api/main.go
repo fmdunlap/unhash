@@ -7,6 +7,10 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/fmdunlap/unhash/internal/hashjob"
+	"github.com/fmdunlap/unhash/internal/sqlite"
+	"github.com/fmdunlap/unhash/internal/user"
 )
 
 const version = "1.0.0"
@@ -25,8 +29,10 @@ type config struct {
 }
 
 type application struct {
-	config config
-	logger *log.Logger
+	config         config
+	logger         *log.Logger
+	userService    *user.UserService
+	hashJobService *hashjob.HashJobService
 }
 
 func parseFlags(cfg *config) {
@@ -45,9 +51,13 @@ func main() {
 
 	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
 
+	store := sqlite.NewSqliteStore("data.db", true)
+
 	app := &application{
-		config: cfg,
-		logger: logger,
+		config:         cfg,
+		logger:         logger,
+		userService:    user.NewUserService(store),
+		hashJobService: hashjob.NewHashJobService(store),
 	}
 
 	srv := &http.Server{
