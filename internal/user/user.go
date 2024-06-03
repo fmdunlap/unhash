@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-
 	"github.com/fmdunlap/unhash/internal/uerr"
+	"io"
+	"log"
 )
 
 type User struct {
@@ -15,8 +15,15 @@ type User struct {
 	Email    string `json:"email"`
 }
 
+type UserCache interface {
+	GetUser(id string) (*User, error)
+	GetUserByEmail(email string) (*User, error)
+	SetUser(u *User) error
+	ClearUser(u *User) error
+}
+
 type UserStore interface {
-	InsertUser(u User) error
+	InsertUser(u *User) error
 	GetUser(id string) (*User, error)
 	GetUserByEmail(email string) (*User, error)
 	DeleteUser(id string) error
@@ -25,10 +32,11 @@ type UserStore interface {
 
 type UserService struct {
 	store UserStore
+	cache UserCache
 }
 
-func NewUserService(s UserStore) *UserService {
-	return &UserService{store: s}
+func NewUserService(s UserStore, c UserCache) *UserService {
+	return &UserService{store: s, cache: c}
 }
 
 func Decode(r io.ReadCloser) (*User, error) {
@@ -63,11 +71,32 @@ func (u *UserService) CreateUser(id, name, email string) error {
 		return fmt.Errorf("user already exists")
 	}
 
-	return u.store.InsertUser(User{ID: id, Username: name, Email: email})
+	user := &User{ID: id, Username: name, Email: email}
+	err = u.store.InsertUser(user)
+	if err != nil {
+		return err
+	}
+	err = u.cache.SetUser(user)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (u *UserService) GetUser(id string) (*User, error) {
-	user, err := u.store.GetUser(id)
+	user, err := u.cache.GetUser(id)
+	if err == nil {
+		return user, nil
+	}
+
+	if errors.Is(err, &uerr.ErrorNotFound{}) {
+		log.Print("User not found in cache, getting from DB")
+	} else {
+		return nil, fmt.Errorf("unknown error when getting user: %w", err)
+	}
+
+	user, err = u.store.GetUser(id)
 	if err != nil {
 		if errors.Is(err, &uerr.ErrorNotFound{}) {
 			return nil, fmt.Errorf("user not found: %w", err)
@@ -79,7 +108,18 @@ func (u *UserService) GetUser(id string) (*User, error) {
 }
 
 func (u *UserService) GetUserByEmail(email string) (*User, error) {
-	user, err := u.store.GetUserByEmail(email)
+	user, err := u.cache.GetUserByEmail(email)
+	if err == nil {
+		return user, nil
+	}
+
+	if errors.Is(err, &uerr.ErrorNotFound{}) {
+		log.Print("User not found in cache, getting from DB")
+	} else {
+		return nil, fmt.Errorf("unknown error when getting user: %w", err)
+	}
+
+	user, err = u.store.GetUserByEmail(email)
 	if err != nil {
 		if errors.Is(err, &uerr.ErrorNotFound{}) {
 			return nil, fmt.Errorf("user not found: %w", err)
@@ -90,8 +130,12 @@ func (u *UserService) GetUserByEmail(email string) (*User, error) {
 	return user, nil
 }
 
-func (u *UserService) DeleteUser(id string) error {
-	return u.store.DeleteUser(id)
+func (u *UserService) DeleteUser(user *User) error {
+	err := u.cache.ClearUser(user)
+	if err != nil {
+		log.Printf("Encountered error when clearing user from cache: %v", err)
+	}
+	return u.store.DeleteUser(user.ID)
 }
 
 func (u *UserService) ListAllUsers() ([]User, error) {

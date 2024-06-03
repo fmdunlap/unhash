@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/fmdunlap/unhash/internal/rediscache"
+	"github.com/fmdunlap/unhash/internal/sqlite"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/fmdunlap/unhash/internal/hashjob"
-	"github.com/fmdunlap/unhash/internal/sqlite"
 	"github.com/fmdunlap/unhash/internal/user"
 )
 
@@ -51,13 +52,14 @@ func main() {
 
 	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
 
-	store := sqlite.NewSqliteStore("data.db", true)
+	sqliteDb := sqlite.NewSqliteStore("data.db", true)
+	redisClient := rediscache.NewRedisClient("localhost:6379", "", true)
 
 	app := &application{
 		config:         cfg,
 		logger:         logger,
-		userService:    user.NewUserService(store),
-		hashJobService: hashjob.NewHashJobService(store),
+		userService:    user.NewUserService(sqliteDb, redisClient),
+		hashJobService: hashjob.NewHashJobService(sqliteDb),
 	}
 
 	srv := &http.Server{
