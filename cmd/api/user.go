@@ -94,7 +94,9 @@ func (app *application) deleteUserHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	err = app.userService.DeleteUser(id)
+	u, err := app.userService.GetUser(id)
+
+	err = app.userService.DeleteUser(u)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("error deleting user: %v", err), http.StatusInternalServerError)
 		return

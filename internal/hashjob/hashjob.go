@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/fmdunlap/unhash/internal/uerr"
 	"github.com/fmdunlap/unhash/internal/user"
@@ -32,12 +33,19 @@ type HashJobStore interface {
 	DeleteHashJob(id string) error
 }
 
-type HashJobService struct {
-	store HashJobStore
+type HashJobCache interface {
+	GetHashJob(id string) (*HashJob, error)
+	SetHashJob(h HashJob) error
+	ClearHashJob(h HashJob) error
 }
 
-func NewHashJobService(s HashJobStore) *HashJobService {
-	return &HashJobService{store: s}
+type HashJobService struct {
+	store HashJobStore
+	cache HashJobCache
+}
+
+func NewHashJobService(s HashJobStore, c HashJobCache) *HashJobService {
+	return &HashJobService{store: s, cache: c}
 }
 
 func Unmarshal(data []byte) (*HashJob, error) {
@@ -51,6 +59,16 @@ func Unmarshal(data []byte) (*HashJob, error) {
 }
 
 func (h *HashJobService) CreateHashJob(hashes []string, owner *user.User) (string, error) {
+	if len(hashes) == 0 {
+		return "", errors.New("hashes cannot be empty")
+	}
+	if owner == nil {
+		return "", errors.New("owner cannot be nil")
+	}
+	if owner.Validate() != nil {
+		return "", fmt.Errorf("invalid owner: %w", owner.Validate())
+	}
+
 	hj := HashJob{
 		ID:      uuid.New().String(),
 		OwnerId: owner.ID,
@@ -66,15 +84,32 @@ func (h *HashJobService) CreateHashJob(hashes []string, owner *user.User) (strin
 		return "", err
 	}
 
+	err = h.cache.SetHashJob(hj)
+	if err != nil {
+		return "", err
+	}
+
 	return hj.ID, nil
 }
 
 func (h *HashJobService) GetHashJob(id string) (*HashJob, error) {
-	hj, err := h.store.GetHashJob(id)
+	hj, err := h.cache.GetHashJob(id)
+	if err == nil {
+		return hj, nil
+	}
+
+	log.Printf("Cache miss for hashjob %v", id)
+
+	hj, err = h.store.GetHashJob(id)
 	if err != nil {
 		if errors.Is(err, &uerr.ErrorNotFound{}) {
 			return nil, fmt.Errorf("hashjob not found: %w", err)
 		}
+		return nil, err
+	}
+
+	err = h.cache.SetHashJob(*hj)
+	if err != nil {
 		return nil, err
 	}
 

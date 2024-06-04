@@ -36,6 +36,7 @@ type UserService struct {
 }
 
 func NewUserService(s UserStore, c UserCache) *UserService {
+
 	return &UserService{store: s, cache: c}
 }
 
@@ -57,6 +58,19 @@ func Unmarshal(data []byte) (*User, error) {
 	}
 
 	return &u, nil
+}
+
+func (user *User) Validate() error {
+	if user.ID == "" {
+		return fmt.Errorf("user ID cannot be empty")
+	}
+	if user.Username == "" {
+		return fmt.Errorf("username cannot be empty")
+	}
+	if user.Email == "" {
+		return fmt.Errorf("email cannot be empty")
+	}
+	return nil
 }
 
 func (u *UserService) CreateUser(id, name, email string) error {

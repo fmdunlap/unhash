@@ -59,7 +59,7 @@ func main() {
 		config:         cfg,
 		logger:         logger,
 		userService:    user.NewUserService(sqliteDb, redisClient),
-		hashJobService: hashjob.NewHashJobService(sqliteDb),
+		hashJobService: hashjob.NewHashJobService(sqliteDb, redisClient),
 	}
 
 	srv := &http.Server{
