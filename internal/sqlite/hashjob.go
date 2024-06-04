@@ -12,6 +12,9 @@ func (s *SqliteStore) InsertHashJob(h hashjob.HashJob) error {
 	if h.ID == "" {
 		return errors.New("id is required")
 	}
+	if h.OwnerId == "" {
+		return errors.New("owner id is required")
+	}
 
 	statement, err := s.sq3.Prepare("insert into hashjobs (id, data) values (?, ?)")
 	if err != nil {
